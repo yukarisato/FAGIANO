@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>FAGIANO 2026-2027 試合管理</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+<style>
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    margin: 0;
+    padding: 0;
+    background: #fafafa;
+}
+
+html, body {
+    height: 100%;
+    overflow: hidden;   /* ページ全体のスクロールを消す */
+}
+
+header {
+    background: #B6003D;
+    padding: 10px;
+    position: sticky;
+    top: 0;
+    border-bottom: 1px solid #ddd;
+    z-index: 100;
+    border-top: 7px solid #BF9C46; /* ← ラインを固定で表示 */
+    border-bottom: 7px solid #BF9C46; /* ← ラインを固定で表示 */
+}
+    
+thead th {
+    position: sticky;
+    top: 0;
+    background: #B6003D;
+    color: white; /*文字色*/
+    z-index: 50;
+}
+    
+button {
+    padding: 8px 12px;
+    margin: 4px;
+    font-size: 14px;
+    border-radius: 6px;
+    border: 1px solid #ccc;
+    background: #fff;
+    transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+button:hover {
+    background-color: #f0f0f0;
+    border-color: #bbb;
+}
+
+button:active {
+    background-color: #e0e0e0;
+    border-color: #999;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 10px;
+}
+
+th, td {
+    border-bottom: 1px solid #ddd;
+    padding: 8px;
+    font-size: 14px;
+}
+
+.table-scroll {
+    max-height: 78vh;
+    overflow-y: auto;
+}    
+    
+.logo {
+    height: 40px;          /* タイトル文字と同じ高さ */
+    vertical-align: middle;
+    margin-right: 8px;
+}
+
+.opp-logo {
+    height: 20px;
+    vertical-align: middle;
+    margin-right: 6px;
+}
+    
+.header-title {
+    color: #1C2469;            /* ネイビー */
+    font-size: 28px;           /* 少し大きめ */
+    font-weight: 900;          /* 太文字 */
+    margin-bottom: 10px;
+    text-shadow: /* 白縁取り（4方向＋斜め） */
+        2px 2px 0 #ffffff,
+        -2px 2px 0 #ffffff,
+        2px -2px 0 #ffffff,
+        -2px -2px 0 #ffffff,
+        0px 2px 0 #ffffff,
+        2px 0px 0 #ffffff,
+        -2px 0px 0 #ffffff,
+        0px -2px 0 #ffffff;
+}
+    
+.marker-none { background: #FFFFFF; }
+.marker-want { background: #FFF4A3; }
+.marker-must { background: #FFAF96; }
+.marker-done { background: #A6DEBB; }
+
+.marker-cell { cursor: pointer; text-align: center; }
+
+.h-cell { background: #ffe5e5; }
+.a-cell { background: #e5f0ff; }
+    
+/* want ボタン（黄色系） */
+.btn-want {
+    background: #FFF4A3;
+    border: 1px solid #E6D98F;
+}
+.btn-want:hover {
+    background: #FFE980;
+    border-color: #D6C878;
+}
+.btn-want:active {
+    background: #FFD95A;
+    border-color: #C0B060;
+}
+
+/* must ボタン（オレンジ系） */
+.btn-must {
+    background: #FFAF96;
+    border: 1px solid #E69C86;
+}
+.btn-must:hover {
+    background: #FF9C7A;
+    border-color: #D6856C;
+}
+.btn-must:active {
+    background: #FF825C;
+    border-color: #C06F58;
+}
+
+/* done ボタン（グリーン系） */
+.btn-done {
+    background: #A6DEBB;
+    border: 1px solid #92C9A7;
+}
+.btn-done:hover {
+    background: #8ED7AA;
+    border-color: #7FBF96;
+}
+.btn-done:active {
+    background: #74C998;
+    border-color: #6AB088;
+}
+    
+input[type="date"], input[type="text"] {
+    font-size: 14px;
+    padding: 4px;
+}
+</style>
+</head>
+
+<body>
+
+<header>
+    <div class="header-title">
+        <img src="J1_emblem/fagiano.svg" class="logo">
+        FAGIANO 2026-2027 GAMES  ⚽
+    </div>
+    <button onclick="sortBySec()">節順</button>
+    <button onclick="sortByHA()">Home/Away</button>
+    <button class="btn-want" onclick="filterWant()">Want</button>
+    <button class="btn-must" onclick="filterMust()">Must</button>
+    <button class="btn-done" onclick="filterDone()">Done</button>
+    <button onclick="resetFilter()">全表示</button>
+    <button onclick="loadJSON()">Load JSON</button>
+    <button onclick="saveJSON()">Save</button>
+    <button onclick="exportExcel()">Export</button>
+</header>
+
+<div class="table-scroll">
+<table id="matchTable">
+<thead>
+<tr>
+    <th>節</th>
+    <th>マーカー</th>
+    <th>試合日</th>
+    <th>H/A</th>
+    <th>対戦相手</th>
+    <th>KICK OFF</th>
+    <th>スタジアム</th>
+    <th>チケット発売日(会員)</th>
+</tr>
+</thead>
+<tbody></tbody>
+</table>
+</div>
+    
+<script>
+/* -------------------------
+   エンブレム
+------------------------- */
+const emblemMap = {
+    "セレッソ大阪": "J1_emblem/cerezo.svg",
+    "V・ファーレン長崎": "J1_emblem/nagasaki.svg",
+    "東京ヴェルディ": "J1_emblem/verdy.svg",
+    "名古屋グランパス": "J1_emblem/nagoya.svg",
+    "ジェフユナイテッド千葉": "J1_emblem/chiba.svg",
+    "サンフレッチェ広島": "J1_emblem/hiroshima.svg",
+    "浦和レッズ": "J1_emblem/urawa.svg",
+    "京都サンガF.C.": "J1_emblem/kyoto.svg",
+    "アビスパ福岡": "J1_emblem/avispa.svg",
+    "ヴィッセル神戸": "J1_emblem/vissel.svg",
+    "水戸ホーリーホック": "J1_emblem/mito.svg",
+    "川崎フロンターレ": "J1_emblem/kawasaki.svg",
+    "FC東京": "J1_emblem/fctokyo.svg",
+    "横浜F・マリノス": "J1_emblem/marinos.svg",
+    "ガンバ大阪": "J1_emblem/gamba.svg",
+    "清水エスパルス": "J1_emblem/shimizu.svg",
+    "鹿島アントラーズ": "J1_emblem/kashima.svg",
+    "FC町田ゼルビア": "J1_emblem/machida.svg",
+    "柏レイソル": "J1_emblem/kashiwa.svg"
+};
+    
+/* -------------------------
+   初期データ（あなたの貼ってくれたもの）
+------------------------- */
+let matches = [
+    {sec:1, marker:"none", date:"8.8(土)", ha:"A", opp:"セレッソ大阪", ko:"19:00", stadium:"ハナサカスタジアム", ticket:""},
+    {sec:2, marker:"none", date:"8.15(土)", ha:"H", opp:"V・ファーレン長崎", ko:"18:55", stadium:"JFEスタジアム", ticket:""},
+    {sec:3, marker:"none", date:"8.22(土)", ha:"H", opp:"東京ヴェルディ", ko:"18:30", stadium:"JFEスタジアム", ticket:""},
+    {sec:4, marker:"none", date:"8.29(土)", ha:"A", opp:"名古屋グランパス", ko:"19:00", stadium:"豊田スタジアム", ticket:""},
+    {sec:5, marker:"none", date:"9.2(水)", ha:"A", opp:"ジェフユナイテッド千葉", ko:"19:00", stadium:"フクダ電子アリーナ", ticket:""},
+    {sec:6, marker:"none", date:"9.6(日)", ha:"H", opp:"サンフレッチェ広島", ko:"18:00", stadium:"JFEスタジアム", ticket:""},
+    {sec:7, marker:"none", date:"9.13(日)", ha:"A", opp:"浦和レッズ", ko:"18:30", stadium:"埼玉スタジアム2002", ticket:""},
+    {sec:8, marker:"none", date:"9.19(土)", ha:"H", opp:"京都サンガF.C.", ko:"19:00", stadium:"JFEスタジアム", ticket:""},
+    {sec:9, marker:"none", date:"10.10(土)", ha:"A", opp:"アビスパ福岡", ko:"15:00", stadium:"ベスト電器スタジアム", ticket:""},
+    {sec:10, marker:"none", date:"10.17・10.18", ha:"H", opp:"ヴィッセル神戸", ko:"未定", stadium:"JFEスタジアム", ticket:""},
+    {sec:11, marker:"none", date:"10.21(水)", ha:"H", opp:"水戸ホーリーホック", ko:"19:00", stadium:"JFEスタジアム", ticket:""},
+    {sec:12, marker:"none", date:"10.25(日)", ha:"A", opp:"川崎フロンターレ", ko:"16:00", stadium:"等々力陸上競技場", ticket:""},
+    {sec:13, marker:"none", date:"10.31(土)", ha:"H", opp:"FC東京", ko:"14:00", stadium:"JFEスタジアム", ticket:""},
+    {sec:14, marker:"none", date:"11.7(土)", ha:"A", opp:"横浜F・マリノス", ko:"14:00", stadium:"日産スタジアム", ticket:""},
+    {sec:15, marker:"none", date:"11.21(土)", ha:"A", opp:"ガンバ大阪", ko:"16:00", stadium:"パナソニックスタジアム吹田", ticket:""},
+    {sec:16, marker:"none", date:"11.25(水)", ha:"H", opp:"清水エスパルス", ko:"19:00", stadium:"JFEスタジアム", ticket:""},
+    {sec:17, marker:"none", date:"11.28・11.29", ha:"A", opp:"鹿島アントラーズ", ko:"15:00", stadium:"メルカリスタジアム", ticket:""},
+    {sec:18, marker:"none", date:"12.6(日)", ha:"A", opp:"FC町田ゼルビア", ko:"14:00", stadium:"GIONスタジアム", ticket:""},
+    {sec:19, marker:"none", date:"12.13(日)", ha:"H", opp:"柏レイソル", ko:"14:00", stadium:"JFEスタジアム", ticket:""},
+    {sec:20, marker:"none", date:"未定", ha:"A", opp:"京都サンガF.C.", ko:"未定", stadium:"サンガスタジアム", ticket:""},
+    {sec:21, marker:"none", date:"2.13・2.14", ha:"A", opp:"サンフレッチェ広島", ko:"未定", stadium:"エディオンピースウイング広島", ticket:""},
+    {sec:22, marker:"none", date:"2.20・2.21", ha:"H", opp:"ガンバ大阪", ko:"未定", stadium:"JFEスタジアム", ticket:""},
+    {sec:23, marker:"none", date:"2.27・2.28", ha:"H", opp:"鹿島アントラーズ", ko:"未定", stadium:"JFEスタジアム", ticket:""},
+    {sec:24, marker:"none", date:"3.6・3.7", ha:"A", opp:"ヴィッセル神戸", ko:"未定", stadium:"ノエビアスタジアム神戸", ticket:""},
+    {sec:25, marker:"none", date:"3.10(水)", ha:"H", opp:"横浜F・マリノス", ko:"未定", stadium:"JFEスタジアム", ticket:""},
+    {sec:26, marker:"none", date:"3.13・3.14", ha:"A", opp:"柏レイソル", ko:"未定", stadium:"三協フロンテア柏スタジアム", ticket:""},
+    {sec:27, marker:"none", date:"3.20・3.21", ha:"A", opp:"V・ファーレン長崎", ko:"未定", stadium:"ピーススタジアム", ticket:""},
+    {sec:28, marker:"none", date:"4.3・4.4", ha:"H", opp:"名古屋グランパス", ko:"未定", stadium:"JFEスタジアム", ticket:""},
+    {sec:29, marker:"none", date:"4.10・4.11", ha:"A", opp:"FC東京", ko:"未定", stadium:"味の素スタジアム", ticket:""},
+    {sec:30, marker:"none", date:"4.17・4.18", ha:"H", opp:"浦和レッズ", ko:"未定", stadium:"JFEスタジアム", ticket:""},
+    {sec:31, marker:"none", date:"4.24・4.25", ha:"H", opp:"セレッソ大阪", ko:"未定", stadium:"JFEスタジアム", ticket:""},
+    {sec:32, marker:"none", date:"4.29(木)", ha:"A", opp:"清水エスパルス", ko:"未定", stadium:"IAIスタジアム日本平", ticket:""},
+    {sec:33, marker:"none", date:"5.3・5.4", ha:"H", opp:"川崎フロンターレ", ko:"未定", stadium:"JFEスタジアム", ticket:""},
+    {sec:34, marker:"none", date:"5.9(土)", ha:"A", opp:"水戸ホーリーホック", ko:"未定", stadium:"ケーズデンキスタジアム水戸", ticket:""},
+    {sec:35, marker:"none", date:"5.15・5.16", ha:"H", opp:"ジェフユナイテッド千葉", ko:"未定", stadium:"JFEスタジアム", ticket:""},
+    {sec:36, marker:"none", date:"5.22・5.23", ha:"H", opp:"FC町田ゼルビア", ko:"未定", stadium:"JFEスタジアム", ticket:""},
+    {sec:37, marker:"none", date:"5.29・5.30", ha:"A", opp:"東京ヴェルディ", ko:"未定", stadium:"味の素スタジアム", ticket:""},
+    {sec:38, marker:"none", date:"6.6(土)", ha:"H", opp:"アビスパ福岡", ko:"未定", stadium:"JFEスタジアム", ticket:""}
+];
+
+/* マーカー補完（undefined防止） */
+matches = matches.map(m => ({ ...m, marker: m.marker || "none" }));
+let markers = matches.map(m => m.marker);
+
+/* -------------------------
+   localStorage復元
+------------------------- */
+const saved = localStorage.getItem("fagiano_data");
+if (saved) {
+    try {
+        matches = JSON.parse(saved);
+        matches = matches.map(m => ({ ...m, marker: m.marker || "none" }));
+        markers = matches.map(m => m.marker);
+    } catch (e) {
+        console.log("JSON復元失敗");
+    }
+}
+renderTable();
+
+/* -------------------------
+   編集関数（date / ko）
+------------------------- */
+function editText(i, key, cell) {
+    const input = document.createElement("input");
+    input.type = "text";
+    input.value = matches[i][key] || "";
+
+    input.onchange = () => {
+        matches[i][key] = input.value;
+        saveLocal();
+        renderTable();
+    };
+
+    cell.innerHTML = "";
+    cell.appendChild(input);
+    input.focus();
+}
+
+/* -------------------------
+   チケット発売日編集
+------------------------- */
+function editDate(i, cell) {
+    const input = document.createElement("input");
+    input.type = "date";
+    input.value = matches[i].ticket || "";
+
+    input.onchange = () => {
+        matches[i].ticket = input.value;
+        saveLocal();
+        renderTable();
+    };
+
+    cell.innerHTML = "";
+    cell.appendChild(input);
+    input.focus();
+}
+
+/* -------------------------
+   マーカー表示
+------------------------- */
+function markerClass(state) {
+    if (state === "want") return "marker-want";
+    if (state === "must") return "marker-must";
+    if (state === "done") return "marker-done";
+    return "marker-none";
+}
+
+function toggleMarker(i) {
+    if (markers[i] === "none") markers[i] = "want";
+    else if (markers[i] === "want") markers[i] = "must";
+    else if (markers[i] === "must") markers[i] = "done";
+    else markers[i] = "none";
+
+    matches[i].marker = markers[i];
+    saveLocal();
+    renderTable();
+}
+
+/* -------------------------
+   テーブル描画
+------------------------- */
+function renderTable(filteredIndexes = null) {
+    const tbody = document.querySelector("#matchTable tbody");
+    tbody.innerHTML = "";
+
+    const list = filteredIndexes || matches.map((_, i) => i);
+
+    list.forEach(i => {
+        const m = matches[i];
+        const haClass = m.ha === "H" ? "h-cell" : "a-cell";
+
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+            <td>${m.sec}</td>
+
+            <td class="marker-cell ${markerClass(markers[i])}" onclick="toggleMarker(${i})">
+                ${markers[i] === "none" ? "" : markers[i]}
+            </td>
+
+            <td ondblclick="editText(${i}, 'date', this)">${m.date}</td>
+
+            <td class="${haClass}">${m.ha}</td>
+
+            <td><img src="${emblemMap[m.opp] || ''}" class="opp-logo">${m.opp}</td>
+
+            <td ondblclick="editText(${i}, 'ko', this)">${m.ko}</td>
+
+            <td><a href="https://maps.google.com/maps?q=${encodeURIComponent(m.stadium)}" target="_blank">${m.stadium}</a></td>
+
+            <td ondblclick="editDate(${i}, this)">${m.ticket}</td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+/* -------------------------
+   ソート・フィルタ
+------------------------- */
+function sortByHA() {
+    matches.sort((a, b) => a.ha.localeCompare(b.ha));
+    saveLocal();
+    renderTable();
+}
+
+function sortBySec() {
+    matches.sort((a, b) => Number(a.sec) - Number(b.sec));
+    saveLocal();
+    renderTable();
+}
+
+function filterWant() {
+    const idx = matches.map((_, i) => i).filter(i => markers[i] === "want");
+    renderTable(idx);
+}
+
+function filterMust() {
+    const idx = matches.map((_, i) => i).filter(i => markers[i] === "must");
+    renderTable(idx);
+}
+
+function filterDone() {
+    const idx = matches.map((_, i) => i).filter(i => markers[i] === "done");
+    renderTable(idx);
+}
+
+function resetFilter() {
+    renderTable();
+}
+
+/* -------------------------
+   JSON保存
+------------------------- */
+function saveJSON() {
+    const json = JSON.stringify(matches);
+    const blob = new Blob([json], { type: "application/json" });
+
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "fagiano_data.json";
+    a.click();
+
+    saveLocal();
+}
+
+/* localStorage保存 */
+function saveLocal() {
+    localStorage.setItem("fagiano_data", JSON.stringify(matches));
+}
+
+/* -------------------------
+   JSON読み込み
+------------------------- */
+function loadJSON() {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".json";
+
+    input.onchange = () => {
+        const file = input.files[0];
+        const reader = new FileReader();
+
+        reader.onload = (e) => {
+            matches = JSON.parse(e.target.result);
+            matches = matches.map(m => ({ ...m, marker: m.marker || "none" }));
+            markers = matches.map(m => m.marker);
+            saveLocal();
+            renderTable();
+        };
+
+        reader.readAsText(file);
+    };
+
+    input.click();
+}
+
+/* -------------------------
+   Excel出力
+------------------------- */
+function exportExcel() {
+    const sheetData = matches.map(m => ({
+        "節": m.sec,
+        "マーカー": m.marker,
+        "試合日": m.date,
+        "Home/Away": m.ha,
+        "対戦相手": m.opp,
+        "KICK OFF": m.ko,
+        "スタジアム": m.stadium,
+        "チケット発売日": m.ticket
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(sheetData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Sheet1");
+
+    XLSX.writeFile(workbook, "FAGIANO_2026-2027.xlsx");
+}
+</script>
+
+</body>
+</html>
